@@ -17,7 +17,11 @@ from vectorstore_runtime import build_vectorstore
 
 # --- CONFIGURATION ---
 # Load API Key from Environment Variable
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if not GOOGLE_API_KEY:
+    print(" WARNING: GOOGLE_API_KEY not found in environment variables")
+else:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
 # Using Flash for speed, as it handles the routing logic very quickly
 model = genai.GenerativeModel('gemini-2.5-flash') 
@@ -129,8 +133,8 @@ def chat(req: ChatRequest):
     # We rebuild the vector store per request for real-time accuracy
     vs = build_vectorstore(text_data, req.account_id)
     
-    # Search for context
-    docs = vs.similarity_search(req.query, k=4)
+    # Search for context (k=1 since we only have one document)
+    docs = vs.similarity_search(req.query, k=1)
     context = "\n".join([d.page_content for d in docs])
 
     # 6. Generate Final Response

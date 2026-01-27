@@ -22,7 +22,7 @@ def get_account_data(account_id: str, token: str, related_modules_to_fetch: list
         # 1. ALWAYS Fetch the MAIN Account (Core details are always needed)
         print(f"Fetching Main Account ID: {account_id}...")
         url = f"{BASE_URL}/Accounts/{account_id}"
-        res = requests.get(url, headers=headers)
+        res = requests.get(url, headers=headers, timeout=10)
         
         if res.status_code != 200:
             print(f"Error fetching Account: {res.text}")
@@ -48,7 +48,7 @@ def get_account_data(account_id: str, token: str, related_modules_to_fetch: list
             
             try:
                 # We limit per_page to 10 to keep payloads manageable
-                rel_res = requests.get(rel_url, headers=headers, params={"per_page": 10})
+                rel_res = requests.get(rel_url, headers=headers, params={"per_page": 10}, timeout=10)
                 
                 if rel_res.status_code == 200:
                     rel_data = rel_res.json().get("data", [])

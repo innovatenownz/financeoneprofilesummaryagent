@@ -21,12 +21,17 @@ def get_access_token():
         "client_secret": CLIENT_SECRET
     }
 
+    # Validate required environment variables
+    if not all([REFRESH_TOKEN, CLIENT_ID, CLIENT_SECRET]):
+        print("❌ Missing required Zoho credentials in environment variables")
+        return None
+    
     try:
-        res = requests.post(url, data=payload)
+        res = requests.post(url, data=payload, timeout=10)
         
-        # DEBUGGING: This will print exactly what Zoho sends back
-        print(f"\n🔑 DEBUG: Zoho Response: {res.json()}") 
-        
+        # DEBUGGING: Log only status code to avoid exposing sensitive tokens
+        print(f"✅ Zoho Auth Status: {res.status_code}")
+
         res.raise_for_status()
         return res.json()["access_token"]
 
