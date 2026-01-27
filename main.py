@@ -16,7 +16,8 @@ from crm_to_text import crm_record_to_text
 from vectorstore_runtime import build_vectorstore
 
 # --- CONFIGURATION ---
-genai.configure(api_key="AIzaSyA3hHsrl5o-qr8oH5-XWaXdVPdaidkEyu0")
+# Load API Key from Environment Variable
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 # Using Flash for speed, as it handles the routing logic very quickly
 model = genai.GenerativeModel('gemini-2.5-flash') 
