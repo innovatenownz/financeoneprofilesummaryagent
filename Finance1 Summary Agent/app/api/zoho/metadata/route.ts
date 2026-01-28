@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     }
     
     const searchParams = request.nextUrl.searchParams;
-    const module = searchParams.get('module');
+    const moduleName = searchParams.get('module');
     
     // Note: This endpoint would ideally use Zoho SDK, but since we're in a serverless
     // function, we can't directly access the client-side SDK. This endpoint should be

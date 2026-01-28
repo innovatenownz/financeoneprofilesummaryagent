@@ -75,15 +75,16 @@ export function loadZohoSDK(
   ) as HTMLScriptElement | null;
   
   if (existingScript) {
-    // Check if script has already finished loading (race condition fix)
-    // readyState can be: 'loading', 'interactive', 'complete', or '' (for non-IE browsers)
-    const isScriptLoaded = existingScript.readyState === 'complete' || 
-                          existingScript.readyState === 'loaded' ||
-                          (!existingScript.readyState && existingScript.complete);
+    // Script element exists - check if SDK is already available
+    if (isZohoSDKAvailable()) {
+      onLoad?.();
+      return;
+    }
     
-    if (isScriptLoaded) {
-      // Script already loaded, check if SDK is available
-      // Use a small delay to allow SDK to initialize if it just finished loading
+    // Script is loading or loaded but SDK not ready yet
+    // Add event listeners to handle when script finishes loading
+    const loadHandler = () => {
+      // Give SDK a moment to initialize after script loads
       setTimeout(() => {
         if (isZohoSDKAvailable()) {
           onLoad?.();
@@ -103,23 +104,10 @@ export function loadZohoSDK(
           checkInterval = setInterval(() => {
             if (isZohoSDKAvailable()) {
               clearInterval(checkInterval!);
-              clearTimeout(timeoutId); // Clear timeout when SDK loads successfully
+              clearTimeout(timeoutId);
               onLoad?.();
             }
           }, 50);
-        }
-      }, 100);
-      return;
-    }
-    
-    // Script is still loading, add event listeners with once: true to prevent duplicates
-    const loadHandler = () => {
-      // Give SDK a moment to initialize
-      setTimeout(() => {
-        if (isZohoSDKAvailable()) {
-          onLoad?.();
-        } else {
-          onError?.(new Error('Zoho SDK script loaded but SDK not available'));
         }
       }, 100);
     };

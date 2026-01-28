@@ -3,6 +3,8 @@
  * These types represent the structure of Zoho CRM data and SDK interactions
  */
 
+import type { ZohoSDK } from './sdk';
+
 /**
  * Zoho CRM record - dynamic structure based on module
  */

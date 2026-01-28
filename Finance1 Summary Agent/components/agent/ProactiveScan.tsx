@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRecordData } from '@/components/zoho/useRecordData';
 import { RecommendationCard } from './RecommendationCard';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -30,7 +30,7 @@ export function ProactiveScan({ className, autoScan = true }: ProactiveScanProps
   const [error, setError] = useState<string | null>(null);
   const [hasScanned, setHasScanned] = useState(false);
   
-  const performScan = async () => {
+  const performScan = useCallback(async () => {
     if (!entityId || !entityType) {
       setError('No record loaded');
       return;
@@ -77,14 +77,14 @@ export function ProactiveScan({ className, autoScan = true }: ProactiveScanProps
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [entityId, entityType]);
   
   // Auto-scan when record loads
   useEffect(() => {
     if (autoScan && hasRecord && entityId && entityType && !hasScanned) {
       performScan();
     }
-  }, [autoScan, hasRecord, entityId, entityType, hasScanned]);
+  }, [autoScan, hasRecord, entityId, entityType, hasScanned, performScan]);
   
   // Reset when record changes
   useEffect(() => {
