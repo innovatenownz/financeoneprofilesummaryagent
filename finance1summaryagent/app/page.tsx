@@ -30,7 +30,7 @@ function WidgetContent() {
             {sdkState.error?.message || 'Failed to initialize Zoho SDK'}
           </p>
           <p className="text-sm text-gray-500">
-            Make sure you're accessing this widget from within Zoho CRM.
+            Make sure you&apos;re accessing this widget from within Zoho CRM.
           </p>
         </div>
       </div>
