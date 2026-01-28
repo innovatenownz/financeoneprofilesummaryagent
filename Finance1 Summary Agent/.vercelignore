@@ -1,0 +1,16 @@
+# Next.js internal files that should not be treated as serverless functions
+___next_launcher.cjs
+**/___next_launcher.cjs
+**/.next/**
+**/node_modules/**
+
+# Build artifacts
+**/out/**
+**/build/**
+
+# TypeScript build info
+**/*.tsbuildinfo
+
+# Exclude .cjs files from function detection (except in api/ directory)
+*.cjs
+!api/**/*.cjs
