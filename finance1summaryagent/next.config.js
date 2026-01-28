@@ -11,8 +11,28 @@ const nextConfig = {
             key: 'X-Content-Type-Options',
             value: 'nosniff',
           },
-          // Removed X-Frame-Options to allow Zoho CRM iframe embedding
-          // Zoho widgets are loaded in iframes, so we need to allow this
+          // Allow iframe embedding for Zoho CRM widgets
+          {
+            key: 'X-Frame-Options',
+            value: 'ALLOWALL',
+          },
+          // CORS headers for Zoho CRM domains
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*',
+          },
+          {
+            key: 'Access-Control-Allow-Methods',
+            value: 'GET, POST, PUT, DELETE, OPTIONS',
+          },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'Content-Type, Authorization, X-Requested-With',
+          },
+          {
+            key: 'Access-Control-Allow-Credentials',
+            value: 'true',
+          },
         ],
       },
     ];
