@@ -11,15 +11,15 @@ const nextConfig = {
             key: 'X-Content-Type-Options',
             value: 'nosniff',
           },
-          // Allow iframe embedding for Zoho CRM widgets
+          // Allow iframe embedding from crm.zoho.com.au only
           {
-            key: 'X-Frame-Options',
-            value: 'ALLOWALL',
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self' https://crm.zoho.com.au;",
           },
-          // CORS headers for Zoho CRM domains
+          // CORS for crm.zoho.com.au with credentials
           {
             key: 'Access-Control-Allow-Origin',
-            value: '*',
+            value: 'https://crm.zoho.com.au',
           },
           {
             key: 'Access-Control-Allow-Methods',

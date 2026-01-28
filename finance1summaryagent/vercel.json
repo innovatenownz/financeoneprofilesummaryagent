@@ -16,7 +16,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "*"
+          "value": "https://crm.zoho.com.au"
         },
         {
           "key": "Access-Control-Allow-Methods",
@@ -48,12 +48,12 @@
           "value": "strict-origin-when-cross-origin"
         },
         {
-          "key": "X-Frame-Options",
-          "value": "ALLOWALL"
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'self' https://crm.zoho.com.au;"
         },
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "*"
+          "value": "https://crm.zoho.com.au"
         },
         {
           "key": "Access-Control-Allow-Methods",
