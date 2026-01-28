@@ -8,9 +8,6 @@
     "app/api/**/*.ts": {
       "maxDuration": 60,
       "memory": 1024
-    },
-    "api/**/*.py": {
-      "maxDuration": 60
     }
   },
   "headers": [
