@@ -11,10 +11,8 @@ const nextConfig = {
             key: 'X-Content-Type-Options',
             value: 'nosniff',
           },
-          {
-            key: 'X-Frame-Options',
-            value: 'SAMEORIGIN',
-          },
+          // Removed X-Frame-Options to allow Zoho CRM iframe embedding
+          // Zoho widgets are loaded in iframes, so we need to allow this
         ],
       },
     ];
