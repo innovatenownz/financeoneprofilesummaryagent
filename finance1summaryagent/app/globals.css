@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: 'Inter', system-ui, sans-serif;
+  
+  /* Design System Colors */
+  --color-primary: #1E293B;
+  --color-primary-dark: #0F172A;
+  --color-primary-light: #334155;
+  
+  --color-secondary: #F8FAFC;
+  --color-secondary-white: #FFFFFF;
+  
+  --color-accent: #10B981;
+  --color-accent-dark: #059669;
+  --color-accent-light: #34D399;
+  
+  --color-alert: #EF4444;
+  --color-alert-dark: #DC2626;
+  --color-alert-light: #F87171;
+}
+
+@layer base {
+  body {
+    @apply bg-secondary text-primary font-sans antialiased;
+  }
+  
+  /* Ensure clean, modern typography */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold text-primary;
+  }
+  
+  /* Plain language styling - avoid heavy jargon */
+  p {
+    @apply text-primary/90 leading-relaxed;
+  }
+}
