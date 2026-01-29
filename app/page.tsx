@@ -40,9 +40,9 @@ function WidgetContent() {
   // Main widget content
   return (
     <main className="min-h-screen bg-secondary">
-      <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+      <div className="w-full h-full md:p-6 space-y-6">
+        {/* Header - Only show on larger screens to save space on widget */}
+        <div className="bg-white rounded-lg shadow-sm p-4 mb-4 hidden md:block">
           <h1 className="text-2xl font-bold text-primary mb-1">
             Finance1SummaryAgent
           </h1>
@@ -58,24 +58,24 @@ function WidgetContent() {
           <ProactiveScan autoScan={true} />
         )}
 
-        {/* Document Upload Section */}
-        {recordContext.entityId && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h2 className="text-lg font-semibold text-primary mb-3">Upload Documents</h2>
-            <DocumentUpload />
-          </div>
-        )}
-
-        {/* Agent Chat Interface */}
+        {/* Agent Chat Interface - Full height on mobile */}
         {recordContext.entityId ? (
-          <div className="bg-white rounded-lg shadow-sm">
-            <AgentChat />
+          <div className="bg-white rounded-lg shadow-sm h-[600px] flex flex-col">
+            <AgentChat className="h-full" />
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow-sm p-8 text-center">
             <p className="text-gray-500">
               Open a record in Zoho CRM to start using the agent.
             </p>
+          </div>
+        )}
+        
+        {/* Document Upload Section - Below chat */}
+        {recordContext.entityId && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <h2 className="text-lg font-semibold text-primary mb-3">Upload Documents</h2>
+            <DocumentUpload />
           </div>
         )}
       </div>

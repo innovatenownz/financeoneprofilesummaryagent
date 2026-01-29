@@ -105,6 +105,40 @@ class DealsAgent:
 
         return "\n".join(lines)
 
+    def generate_response_stream(self, user_query: str, deal_data: dict):
+        """
+        Generates a response answering questions about the Deal in a streaming fashion.
+        """
+        context_text = self.format_data_for_ai(deal_data)
+
+        prompt = f"""
+        You are an expert Sales Manager Assistant.
+        
+        Your goal is to provide insights on this DEAL based on the data below.
+        
+        ### DATA SCHEMA
+        {self.schema_string}
+
+        ### DEAL CONTEXT
+        {context_text}
+
+        ### USER QUESTION
+        "{user_query}"
+
+        ### INSTRUCTIONS
+        - **Revenue Focus:** Use 'Amount', 'FUM', and 'Expected Revenue' to assess value.
+        - **Pipeline Risk:** Check 'Closing Date' vs 'Stage'. If the date is passed, flag it.
+        - **Team:** If asked about the team, check 'Deal Team Members', 'Primary Advisor', or 'Assigned Roles'.
+        - **Loss Analysis:** If the deal is Lost, look at 'Reason_For_Loss__s'.
+        
+        Answer:
+        """
+        
+        response = self.model.generate_content(prompt, stream=True)
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
+
     def generate_response(self, user_query: str, deal_data: dict) -> str:
         """
         Generates a response answering questions about the Deal.

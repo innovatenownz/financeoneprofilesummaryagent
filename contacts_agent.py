@@ -116,6 +116,41 @@ class ContactsAgent:
 
         return "\n".join(lines)
 
+    def generate_response_stream(self, user_query: str, contact_data: dict):
+        """
+        Generates a response answering questions about the individual client in a streaming fashion.
+        """
+        context_text = self.format_data_for_ai(contact_data)
+
+        prompt = f"""
+        You are an expert Private Wealth Manager Assistant.
+        
+        Your goal is to provide deep insights into this INDIVIDUAL CLIENT based on the profile below.
+        
+        ### DATA SCHEMA (Field Types)
+        {self.schema_string}
+
+        ### CLIENT PROFILE CONTEXT
+        {context_text}
+
+        ### USER QUESTION
+        "{user_query}"
+
+        ### INSTRUCTIONS
+        - **Person-Centric:** Focus on the individual (Age, Interests, Career, Life Stage).
+        - **Financial Health:** If asked about wealth, combine 'Net Worth', 'Total Assets', and 'Income' to give a holistic view.
+        - **Relationships:** Mention the 'Primary Advisor' or 'Referring Client' if relevant to connection context.
+        - **Tone:** Professional, empathetic, and discreet (Wealth Management standard).
+        - If the user asks for contact details, provide Email and Phone clearly.
+        
+        Answer:
+        """
+        
+        response = self.model.generate_content(prompt, stream=True)
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
+
     def generate_response(self, user_query: str, contact_data: dict) -> str:
         """
         Generates a response answering questions about the individual client.
