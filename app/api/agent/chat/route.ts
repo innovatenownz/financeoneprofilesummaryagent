@@ -11,6 +11,7 @@ import type { ChatRequest, ChatResponse } from '@/types/api';
  * - entity_id?: string (at least one of entity_id or account_id is required)
  * - account_id?: string (legacy)
  * - entity_type?: string (optional, defaults to "Accounts")
+ * - modules?: string[] (optional, module scope for CRM context)
  * - query: string (required)
  *
  * Response:
@@ -38,6 +39,9 @@ export async function POST(request: NextRequest) {
       account_id: entityId,
       query: body.query,
       ...(body.entity_type && { entity_type: body.entity_type }),
+      ...(Array.isArray(body.modules) && body.modules.length > 0
+        ? { modules: body.modules }
+        : {}),
     };
 
     const response = await fetchSupabaseFunction('agent-chat', {

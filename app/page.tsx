@@ -6,6 +6,8 @@ import { DocumentUpload } from '@/components/upload';
 
 function WidgetContent() {
   const { sdkState, recordContext } = useZohoContext();
+  const enableScan = process.env.NEXT_PUBLIC_ENABLE_SCAN === 'true';
+  const enableUpload = process.env.NEXT_PUBLIC_ENABLE_UPLOAD === 'true';
 
   // Show loading state while SDK initializes
   if (sdkState.status === 'loading') {
@@ -40,42 +42,42 @@ function WidgetContent() {
   // Main widget content
   return (
     <main className="min-h-screen bg-secondary">
-      <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
+      <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
         {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
-          <h1 className="text-2xl font-bold text-primary mb-1">
-            Finance1SummaryAgent
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <h1 className="text-xl font-semibold text-primary mb-1">
+            AI CRM Assistant
           </h1>
           <p className="text-sm text-gray-600">
             {recordContext.entityId && recordContext.entityType
-              ? `Analyzing ${recordContext.entityType} record`
+              ? `Focused on ${recordContext.entityType} record`
               : 'Waiting for record to load...'}
           </p>
         </div>
 
-        {/* Proactive Scan - Shows recommendations automatically */}
-        {recordContext.entityId && (
-          <ProactiveScan autoScan={true} />
-        )}
-
-        {/* Document Upload Section */}
-        {recordContext.entityId && (
-          <div className="bg-white rounded-lg shadow-sm p-4">
-            <h2 className="text-lg font-semibold text-primary mb-3">Upload Documents</h2>
-            <DocumentUpload />
-          </div>
-        )}
-
         {/* Agent Chat Interface */}
         {recordContext.entityId ? (
-          <div className="bg-white rounded-lg shadow-sm">
-            <AgentChat />
+          <div className="bg-white rounded-lg shadow-sm border border-primary/10 overflow-hidden">
+            <AgentChat className="min-h-[520px] max-h-[70vh]" />
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow-sm p-8 text-center">
             <p className="text-gray-500">
               Open a record in Zoho CRM to start using the agent.
             </p>
+          </div>
+        )}
+
+        {/* Optional Proactive Scan */}
+        {enableScan && recordContext.entityId && (
+          <ProactiveScan autoScan={true} />
+        )}
+
+        {/* Optional Document Upload */}
+        {enableUpload && recordContext.entityId && (
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <h2 className="text-lg font-semibold text-primary mb-3">Upload Documents</h2>
+            <DocumentUpload />
           </div>
         )}
       </div>

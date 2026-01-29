@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { cn } from '@/lib/utils/cn';
-import { Card, CardContent } from '@/components/ui/Card';
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import type { Action } from '@/types/api';
 import { ActionCard } from './ActionCard';
 
@@ -11,6 +11,8 @@ export interface AgentMessageProps {
   content: string;
   actions?: Action[];
   timestamp?: Date;
+  isStreaming?: boolean;
+  streamingLabel?: string;
 }
 
 /**
@@ -23,9 +25,12 @@ export function AgentMessage({
   role, 
   content, 
   actions = [],
-  timestamp 
+  timestamp,
+  isStreaming = false,
+  streamingLabel
 }: AgentMessageProps) {
   const isUser = role === 'user';
+  const displayContent = content || (isStreaming ? '...' : '');
   
   return (
     <div
@@ -49,9 +54,18 @@ export function AgentMessage({
               : 'bg-secondary border border-primary/10 text-primary'
           )}
         >
-          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-            {content}
+          <p className={cn(
+            'text-sm leading-relaxed whitespace-pre-wrap break-words',
+            isStreaming && !content ? 'text-primary/60' : undefined
+          )}>
+            {displayContent}
           </p>
+          {isStreaming && (
+            <div className="mt-2 flex items-center gap-2 text-xs text-primary/60">
+              <LoadingSpinner size="sm" className="text-primary/50" />
+              <span>{streamingLabel || 'Working...'}</span>
+            </div>
+          )}
         </div>
         
         {/* Actions (only for assistant messages) */}

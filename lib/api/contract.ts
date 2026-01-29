@@ -95,6 +95,7 @@ export const AGENT_CHAT_ENDPOINT: EndpointDefinition<ChatRequest, ChatResponse> 
     - Supports both entity_id (modern) and account_id (legacy) for backward compatibility
     - At least one of entity_id or account_id must be provided
     - The backend currently expects account_id, but we send both for compatibility
+    - Optional modules[] can be provided to scope CRM context
     - Response may include optional actions array for actionable UI
   `,
 };
@@ -225,6 +226,17 @@ export function getBackendEndpoints(): Array<{
  * Document breaking changes and new features here
  */
 export const API_CHANGELOG = [
+  {
+    date: '2026-01-29',
+    version: 'v1.1.0',
+    changes: [
+      {
+        type: 'enhanced' as const,
+        endpoint: 'AGENT_CHAT',
+        description: 'Added optional modules[] to scope CRM context in chat requests',
+      },
+    ],
+  },
   {
     date: '2026-01-28',
     version: 'v1.0.0',

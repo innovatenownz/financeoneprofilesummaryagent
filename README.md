@@ -9,6 +9,13 @@ A Next.js 14+ widget for Zoho CRM that provides AI-powered record analysis and r
 - **Tailwind CSS**
 - **Zoho Widget SDK (ZSDK)**
 
+## Features
+
+- Minimal CRM chat widget with streaming responses
+- Multi-module context selection (Accounts, Contacts, Deals, Tasks, Notes, etc.)
+- Quick prompt actions for common CRM workflows
+- Mobile-friendly layout designed for Zoho CRM widget iframe
+
 ## Getting Started
 
 1. Install dependencies:
@@ -73,8 +80,13 @@ The project includes optimized Vercel settings in `vercel.json`:
    **Optional:**
    - `NEXT_PUBLIC_API_VERSION` - API version (defaults to "v1")
    - `NEXT_PUBLIC_ENABLE_SCAN` - Enable proactive scan feature (`true`/`false`)
+   - `NEXT_PUBLIC_ENABLE_UPLOAD` - Enable document upload UI (`true`/`false`)
    
    Backend logic runs on **Supabase Edge Functions** (agent-chat, agent-scan, upload). Set Zoho and Gemini secrets in Supabase Dashboard → Edge Functions → secrets. See `supabase/README.md` for setup.
+
+   For Zoho CRM AU/NZ data centers, set:
+   - `ZOHO_API_DOMAIN=www.zohoapis.com.au`
+   - `ZOHO_AUTH_DOMAIN=accounts.zoho.com.au`
 
 3. **Deploy**:
    - Vercel will automatically deploy on every push to your main branch

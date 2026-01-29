@@ -11,6 +11,12 @@ export type { AgentMessageProps } from './AgentMessage';
 export { AgentInput } from './AgentInput';
 export type { AgentInputProps } from './AgentInput';
 
+export { ModuleSelector } from './ModuleSelector';
+export type { ModuleSelectorProps, ModuleOption } from './ModuleSelector';
+
+export { QuickPrompts } from './QuickPrompts';
+export type { QuickPromptsProps, QuickPrompt } from './QuickPrompts';
+
 export { ProactiveScan } from './ProactiveScan';
 export type { ProactiveScanProps } from './ProactiveScan';
 

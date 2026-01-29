@@ -12,7 +12,8 @@ export async function getAccessToken(): Promise<string | null> {
     throw new Error("Missing required Zoho OAuth credentials (ZOHO_REFRESH_TOKEN, ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET)");
   }
 
-  const url = new URL("https://accounts.zoho.com/oauth/v2/token");
+  const authDomain = Deno.env.get("ZOHO_AUTH_DOMAIN") ?? "accounts.zoho.com";
+  const url = new URL(`https://${authDomain}/oauth/v2/token`);
   url.searchParams.set("refresh_token", refreshToken);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("client_secret", clientSecret);

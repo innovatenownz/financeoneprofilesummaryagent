@@ -17,7 +17,8 @@
      - `ZOHO_REFRESH_TOKEN`
      - `ZOHO_CLIENT_ID`
      - `ZOHO_CLIENT_SECRET`
-     - `ZOHO_API_DOMAIN` (e.g. `www.zohoapis.com`)
+    - `ZOHO_API_DOMAIN` (e.g. `www.zohoapis.com` or `www.zohoapis.com.au`)
+    - `ZOHO_AUTH_DOMAIN` (e.g. `accounts.zoho.com` or `accounts.zoho.com.au`)
      - `GOOGLE_API_KEY`
 
 ## Deploy Edge Functions

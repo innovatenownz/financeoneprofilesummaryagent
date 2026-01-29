@@ -4,7 +4,7 @@
  */
 
 import { getAccessToken } from "../_shared/zoho.ts";
-import { getAccountData } from "../_shared/zohoCrm.ts";
+import { getRecordData, getRelatedRecords } from "../_shared/zohoCrm.ts";
 import { recordToText } from "../_shared/crmToText.ts";
 import {
   generateContent,
@@ -22,6 +22,7 @@ interface ChatBody {
   entity_id?: string;
   account_id?: string;
   entity_type?: string;
+  modules?: string[];
   query: string;
 }
 
@@ -53,12 +54,11 @@ Deno.serve(async (req) => {
       );
     }
     const entityType = body.entity_type ?? "Accounts";
-    if (entityType !== "Accounts") {
-      return new Response(
-        JSON.stringify({ error: `Entity type '${entityType}' not yet supported. Currently only 'Accounts' is supported.` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const selectedModules = Array.isArray(body.modules) ? body.modules.filter(Boolean) : [];
+    if (!selectedModules.includes(entityType)) {
+      selectedModules.unshift(entityType);
     }
+    const uniqueModules = Array.from(new Set(selectedModules));
 
     const token = await getAccessToken();
     if (!token) {
@@ -68,20 +68,50 @@ Deno.serve(async (req) => {
       );
     }
 
-    const record = await getAccountData(entityId, token);
+    const record = await getRecordData(entityType, entityId, token);
     if (!record) {
       return new Response(
-        JSON.stringify({ error: "Account not found in CRM" }),
+        JSON.stringify({ error: "Record not found in CRM" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const textData = recordToText(record, entityType);
-    const context = textData;
+    const contextSections: string[] = [];
+    contextSections.push(recordToText(record, entityType));
+
+    const relatedModules = uniqueModules.filter((module) => module !== entityType);
+    if (relatedModules.length > 0) {
+      const relatedResults = await Promise.all(
+        relatedModules.map(async (module) => {
+          const records = await getRelatedRecords(entityType, entityId, module, token, 5);
+          return { module, records };
+        })
+      );
+
+      relatedResults.forEach(({ module, records }) => {
+        if (!records || records.length === 0) {
+          contextSections.push(`${module}: No related records found.`);
+          return;
+        }
+
+        const limited = records.slice(0, 3);
+        const sectionLines: string[] = [
+          `${module} (latest ${limited.length}):`,
+        ];
+        limited.forEach((recordItem, index) => {
+          sectionLines.push(`--- ${module} ${index + 1} ---`);
+          sectionLines.push(recordToText(recordItem, module));
+        });
+        contextSections.push(sectionLines.join("\n"));
+      });
+    }
+
+    const context = contextSections.join("\n\n");
 
     const prompt = CHAT_RESPONSE_JSON_PROMPT
       .replace("{{CONTEXT}}", context)
-      .replace("{{QUERY}}", body.query);
+      .replace("{{QUERY}}", body.query)
+      .replace("{{MODULES}}", uniqueModules.join(", "));
 
     const rawResponse = await generateContent(prompt);
     const parsed = parseStructuredResponse(rawResponse, "chat");

@@ -49,6 +49,7 @@ export const ChatRequestSchema = z.object({
   entity_id: z.string().optional(),
   account_id: z.string().optional(), // Legacy support
   entity_type: z.string().optional(),
+  modules: z.array(z.string()).optional(),
   query: z.string().min(1, 'Query is required'),
 }).refine(
   (data) => data.entity_id || data.account_id,

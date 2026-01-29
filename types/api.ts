@@ -14,6 +14,8 @@ export interface ChatRequest {
   account_id?: string;
   /** Optional entity type, defaults to "Accounts" */
   entity_type?: string;
+  /** Optional list of CRM modules to include in context */
+  modules?: string[];
   /** User query string */
   query: string;
 }
