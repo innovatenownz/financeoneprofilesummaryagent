@@ -69,13 +69,13 @@ export function useZohoSDK() {
   };
 
   /**
-   * Get metadata for the current module
+   * Get metadata for the current module (optional in SDK; returns null if unavailable).
    */
   const getMetadata = async (): Promise<any> => {
     if (!sdk) {
       throw new Error('Zoho SDK is not available');
     }
-    return sdk.embeddedApp.getMetadata();
+    return sdk.embeddedApp.getMetadata?.() ?? null;
   };
 
   /**
