@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uvicorn
 import os
@@ -123,6 +124,12 @@ def chat(req: ChatRequest):
         raise HTTPException(status_code=404, detail="Record not found in Zoho.")
 
     # 3. Generate Response
+    if hasattr(agent_instance, "generate_response_stream"):
+        return StreamingResponse(
+            agent_instance.generate_response_stream(req.query, record),
+            media_type="text/plain"
+        )
+
     response_text = agent_instance.generate_response(req.query, record)
     return {"response": response_text}
 

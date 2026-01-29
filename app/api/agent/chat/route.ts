@@ -1,80 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchSupabaseFunction, parseJsonResponse, ApiClientError } from '@/lib/api/client';
-import type { ChatRequest, ChatResponse } from '@/types/api';
+
+export const runtime = 'edge';
 
 /**
  * POST /api/agent/chat
  *
- * Proxies chat requests to the Supabase Edge Function agent-chat.
- *
- * Request body:
- * - entity_id?: string (at least one of entity_id or account_id is required)
- * - account_id?: string (legacy)
- * - entity_type?: string (optional, defaults to "Accounts")
- * - query: string (required)
- *
- * Response:
- * - response: string
- * - actions?: Action[]
+ * Proxies chat requests to the Railway backend.
+ * Supports streaming responses.
  */
 export async function POST(request: NextRequest) {
   try {
-    const body: ChatRequest = await request.json();
+    const body = await request.json();
+    const { entity_id, entity_type, query } = body;
 
-    if (!body.query) {
+    if (!query) {
       return NextResponse.json({ error: 'query is required' }, { status: 400 });
     }
 
-    const entityId = body.entity_id || body.account_id;
-    if (!entityId) {
-      return NextResponse.json(
-        { error: 'entity_id or account_id is required' },
-        { status: 400 }
-      );
+    if (!entity_id) {
+      return NextResponse.json({ error: 'entity_id is required' }, { status: 400 });
     }
 
+    const backendUrl = process.env.RAILWAY_BACKEND_URL;
+    if (!backendUrl) {
+      return NextResponse.json({ error: 'Backend URL not configured' }, { status: 500 });
+    }
+
+    // Prepare request for Railway Backend
     const backendRequest = {
-      entity_id: entityId,
-      account_id: entityId,
-      query: body.query,
-      ...(body.entity_type && { entity_type: body.entity_type }),
+      id: entity_id,
+      module: entity_type || 'Accounts', // Default to Accounts if not provided
+      query: query
     };
 
-    const response = await fetchSupabaseFunction('agent-chat', {
+    const response = await fetch(`${backendUrl}/chat`, {
       method: 'POST',
-      body: backendRequest,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(backendRequest),
     });
 
-    const data = await parseJsonResponse<ChatResponse>(response);
-    
+    if (!response.ok) {
+        const errorText = await response.text();
+        return NextResponse.json(
+            { error: `Backend error: ${response.status}`, details: errorText },
+            { status: response.status }
+        );
+    }
+
+    // Handle Streaming Response
+    // If the content-type is text/plain or text/event-stream, we stream it back
+    const contentType = response.headers.get('content-type');
+    if (contentType && (contentType.includes('text/plain') || contentType.includes('event-stream'))) {
+        return new Response(response.body, {
+            headers: {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+            }
+        });
+    }
+
+    // Handle JSON Response
+    const data = await response.json();
     return NextResponse.json(data);
+
   } catch (error) {
     console.error('Error in /api/agent/chat:', error);
-    
-    // Handle ApiClientError with proper status codes
-    if (error instanceof ApiClientError) {
-      return NextResponse.json(
-        { 
-          error: error.message,
-          details: error.details 
-        },
-        { status: error.status || 502 }
-      );
-    }
-    
-    // Handle other errors
-    if (error instanceof Error) {
-      return NextResponse.json(
-        { 
-          error: 'Backend request failed',
-          details: error.message 
-        },
-        { status: 500 }
-      );
-    }
-    
     return NextResponse.json(
-      { error: 'Internal server error', details: 'An unexpected error occurred' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

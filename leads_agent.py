@@ -82,6 +82,40 @@ class LeadsAgent:
 
         return "\n".join(lines)
 
+    def generate_response_stream(self, user_query: str, lead_data: dict):
+        """
+        Generates a response answering the user's query about the sales lead in a streaming fashion.
+        """
+        context_text = self.format_data_for_ai(lead_data)
+
+        prompt = f"""
+        You are an expert Sales Development Representative (SDR) Assistant.
+        
+        Your goal is to assist with LEADS and PROSPECTING based on the data below.
+        
+        ### DATA SCHEMA (Field Types)
+        {self.schema_string}
+
+        ### LEAD CONTEXT
+        {context_text}
+
+        ### USER QUESTION
+        "{user_query}"
+
+        ### INSTRUCTIONS
+        - Focus on **Qualification**: Is this lead hot? Are they interested?
+        - If the lead is CONVERTED, explicitly tell the user they should look at the Account or Contact instead.
+        - If the user asks for contact info, provide the Email/Phone clearly.
+        - If address info appears in 'New_address_fields', use that as the primary address.
+        
+        Response:
+        """
+        
+        response = self.model.generate_content(prompt, stream=True)
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
+
     def generate_response(self, user_query: str, lead_data: dict) -> str:
         """
         Generates a response answering the user's query about the sales lead.

@@ -6,7 +6,9 @@ import { AgentMessage } from './AgentMessage';
 import { AgentInput } from './AgentInput';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Card } from '@/components/ui/Card';
-import type { ChatRequest, ChatResponse, Action } from '@/types/api';
+import { ModuleSelector } from './ModuleSelector';
+import { PreconfiguredPrompts } from './PreconfiguredPrompts';
+import type { Action } from '@/types/api';
 
 export interface Message {
   id: string;
@@ -20,28 +22,30 @@ export interface AgentChatProps {
   className?: string;
 }
 
-/**
- * Main chat interface component
- * 
- * Features:
- * - Message history display
- * - Send messages to agent API
- * - Display agent responses with actions
- * - Auto-scroll to latest message
- * - Loading states
- */
 export function AgentChat({ className }: AgentChatProps) {
   const { entityId, entityType } = useRecordData();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedModule, setSelectedModule] = useState<string>('');
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   
-  // Auto-scroll to bottom when new messages arrive
+  // Initialize selected module based on current entity type
+  useEffect(() => {
+    if (entityType) {
+        // Map Zoho Module Names to our Agent keys (simple lowercase match often works, but let's be safe)
+        // This is a naive mapping, might need refinement
+        const normalized = entityType.toLowerCase().replace(/ /g, '_');
+        setSelectedModule(normalized);
+    }
+  }, [entityType]);
+
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isLoading]); // Scroll on loading state change too
   
   // Reset messages when record changes
   useEffect(() => {
@@ -52,12 +56,12 @@ export function AgentChat({ className }: AgentChatProps) {
   }, [entityId]);
   
   const sendMessage = async (content: string) => {
-    if (!entityId || !entityType) {
-      setError('No record loaded. Please wait for a record to be selected.');
+    if (!entityId) {
+      setError('No record loaded.');
       return;
     }
     
-    // Add user message immediately
+    // Add user message
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -68,80 +72,101 @@ export function AgentChat({ className }: AgentChatProps) {
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
     setError(null);
+
+    // Create placeholder for assistant message
+    const assistantId = `assistant-${Date.now()}`;
+    setMessages((prev) => [...prev, {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date()
+    }]);
     
     try {
-      // Prepare request
-      const request: ChatRequest = {
-        entity_id: entityId,
-        entity_type: entityType,
-        query: content,
-      };
-      
-      // Call API
       const response = await fetch('/api/agent/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entity_id: entityId,
+          entity_type: selectedModule || entityType, // Use selected module or default
+          query: content,
+        }),
       });
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let assistantContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        
+        // Check if the response was actually JSON (error or non-streaming)
+        // This is a bit hacky but if the first chunk starts with {, it might be JSON.
+        // However, our backend now forces stream or JSON.
+        // If it was JSON, we'd parse it. But here we assume stream.
+        // If we get a JSON error in a stream, it might look like text.
+        
+        assistantContent += chunk;
+        
+        // Update the specific message in state
+        setMessages((prev) => prev.map(msg => 
+            msg.id === assistantId 
+                ? { ...msg, content: assistantContent }
+                : msg
+        ));
       }
       
-      const data: ChatResponse = await response.json();
-      
-      // Add assistant message
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: data.response || 'No response received.',
-        actions: data.actions,
-        timestamp: new Date(),
-      };
-      
-      setMessages((prev) => [...prev, assistantMessage]);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to send message';
       setError(errorMessage);
-      
-      // Add error message to chat
-      const errorMessageObj: Message = {
+      setMessages((prev) => prev.filter(msg => msg.id !== assistantId)); // Remove the empty/partial message or mark as error?
+      setMessages((prev) => [...prev, {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: `Sorry, I encountered an error: ${errorMessage}`,
-        timestamp: new Date(),
-      };
-      
-      setMessages((prev) => [...prev, errorMessageObj]);
+        content: `Error: ${errorMessage}`,
+        timestamp: new Date()
+      }]);
     } finally {
       setIsLoading(false);
     }
   };
   
-  const hasRecord = entityId && entityType;
+  const hasRecord = !!entityId;
   
   return (
     <div className={`flex flex-col h-full ${className || ''}`}>
-      {/* Messages container */}
+      {/* Header / Module Selector */}
+      <div className="p-4 border-b bg-white">
+        <div className="flex items-center justify-between mb-2">
+           <span className="text-xs font-semibold text-gray-500 uppercase">Context</span>
+           <ModuleSelector 
+             value={selectedModule} 
+             onChange={setSelectedModule} 
+             className="w-48"
+           />
+        </div>
+      </div>
+
+      {/* Messages */}
       <div
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-2 bg-secondary"
+        className="flex-1 overflow-y-auto p-4 space-y-4 bg-secondary"
       >
         {!hasRecord ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center text-primary/60">
-              <p className="text-sm">Waiting for a record to be loaded...</p>
-            </div>
+          <div className="flex items-center justify-center h-full text-center text-primary/60">
+             <p>Waiting for record...</p>
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center text-primary/60 max-w-md">
-              <p className="text-sm mb-2">Ask me anything about this {entityType} record.</p>
-              <p className="text-xs">I can help you understand the data, suggest actions, and answer questions.</p>
-            </div>
+          <div className="flex flex-col items-center justify-center h-full space-y-4">
+             <p className="text-sm text-gray-500">Ask about this {selectedModule}...</p>
+             <PreconfiguredPrompts onSelect={sendMessage} />
           </div>
         ) : (
           <>
@@ -154,37 +179,21 @@ export function AgentChat({ className }: AgentChatProps) {
                 timestamp={message.timestamp}
               />
             ))}
-            
-            {isLoading && (
-              <div className="flex justify-start mb-4">
-                <div className="bg-secondary border border-primary/10 rounded-xl px-4 py-3">
-                  <LoadingSpinner size="sm" />
-                </div>
-              </div>
-            )}
-            
             <div ref={messagesEndRef} />
           </>
-        )}
-        
-        {error && !isLoading && (
-          <Card variant="outlined" className="bg-alert/5 border-alert/20">
-            <p className="text-sm text-alert">{error}</p>
-          </Card>
         )}
       </div>
       
       {/* Input */}
-      <AgentInput
-        onSend={sendMessage}
-        isLoading={isLoading}
-        disabled={!hasRecord}
-        placeholder={
-          hasRecord
-            ? `Ask a question about this ${entityType} record...`
-            : 'Waiting for record...'
-        }
-      />
+      <div className="p-4 bg-white border-t">
+        {messages.length > 0 && <PreconfiguredPrompts onSelect={sendMessage} className="mb-3" />}
+        <AgentInput
+            onSend={sendMessage}
+            isLoading={isLoading}
+            disabled={!hasRecord}
+            placeholder={`Ask about ${selectedModule}...`}
+        />
+      </div>
     </div>
   );
 }

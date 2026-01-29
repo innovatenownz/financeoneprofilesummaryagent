@@ -6,6 +6,8 @@ import { Card, CardContent } from '@/components/ui/Card';
 import type { Action } from '@/types/api';
 import { ActionCard } from './ActionCard';
 
+import ReactMarkdown from 'react-markdown';
+
 export interface AgentMessageProps {
   role: 'user' | 'assistant';
   content: string;
@@ -36,22 +38,26 @@ export function AgentMessage({
     >
       <div
         className={cn(
-          'max-w-[80%] flex flex-col',
+          'max-w-[90%] md:max-w-[80%] flex flex-col',
           isUser ? 'items-end' : 'items-start'
         )}
       >
         {/* Message bubble */}
         <div
           className={cn(
-            'rounded-xl px-4 py-3 mb-2',
+            'rounded-xl px-4 py-3 mb-2 w-full',
             isUser
               ? 'bg-primary text-secondary-white'
               : 'bg-secondary border border-primary/10 text-primary'
           )}
         >
-          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-            {content}
-          </p>
+          {isUser ? (
+             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{content}</p>
+          ) : (
+             <div className="text-sm leading-relaxed prose prose-sm max-w-none break-words prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0 prose-headings:text-primary">
+                <ReactMarkdown>{content}</ReactMarkdown>
+             </div>
+          )}
         </div>
         
         {/* Actions (only for assistant messages) */}

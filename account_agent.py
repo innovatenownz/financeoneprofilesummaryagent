@@ -134,6 +134,43 @@ class AccountAgent:
 
         return "\n".join(text_lines)
 
+    def generate_response_stream(self, query: str, account_data: dict):
+        """
+        Generates the final response using the specific Account Persona in a streaming fashion.
+        """
+        # 1. Convert Data to Text
+        context_text = self.format_data_for_ai(account_data)
+
+        # 2. Build the Specialist Prompt
+        prompt = f"""
+        You are an expert Relationship Manager Assistant specializing in CLIENT ACCOUNTS.
+        
+        Your goal is to answer the user's question using ONLY the provided account data.
+        
+        ### SYSTEM KNOWLEDGE (The Schema of this Database)
+        The following fields exist in the database. Use this to understand the data types (e.g., Currency vs Text):
+        {self.schema_string}
+
+        ### CURRENT ACCOUNT CONTEXT
+        {context_text}
+
+        ### USER QUESTION
+        "{query}"
+
+        ### INSTRUCTIONS
+        1. Answer directly and professionally.
+        2. If the user asks about financial data (Currency fields), format it nicely (e.g., $1,000,000).
+        3. If the user asks about a field that is NOT in the 'CURRENT ACCOUNT CONTEXT' but IS in the 'SYSTEM KNOWLEDGE', explain that the field exists but is currently empty/blank for this client.
+        4. If the user asks about related items (like Deals or Contacts) check the 'RELATED MODULE DATA' section.
+        
+        Answer:
+        """
+
+        response = self.model.generate_content(prompt, stream=True)
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
+
     def generate_response(self, query: str, account_data: dict) -> str:
         """
         Generates the final response using the specific Account Persona.
