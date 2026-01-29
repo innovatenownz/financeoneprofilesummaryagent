@@ -5,8 +5,9 @@
 
 /**
  * Global Zoho SDK interface
- * This represents the ZOHO object loaded from https://live.zwidgets.com.au/js-sdk/1.1/ZohoEmbededAppSDK.min.js
- * Per Zoho documentation: https://www.zoho.com/crm/developer/docs/widgets/create-widget.html
+ * This represents the ZOHO object loaded from the Zoho Widget JS SDK
+ * Per Zoho documentation: https://www.zohocrm.dev/explore/widgets/v1.5/jssdk
+ * Record data must be fetched via ZOHO.CRM.API.getRecord (PageLoad gives Entity + EntityId only).
  */
 export interface ZohoSDK {
   embeddedApp: {
@@ -40,16 +41,20 @@ export interface ZohoSDK {
     execute(action: string, params?: any): Promise<any>;
 
     /**
-     * Get current record data
-     * @returns Promise that resolves with the current record data
+     * Get metadata for the current module (if available in SDK version)
      */
-    getRecordData(): Promise<any>;
+    getMetadata?(): Promise<any>;
+  };
 
-    /**
-     * Get metadata for the current module
-     * @returns Promise that resolves with module metadata
-     */
-    getMetadata(): Promise<any>;
+  /**
+   * CRM API namespace - use getRecord to fetch full record data.
+   * PageLoad event provides EntityId and Entity only; full record via ZOHO.CRM.API.getRecord.
+   * @see https://help.zwidgets.com/help/v1/ZOHO.CRM.API.html
+   */
+  CRM?: {
+    API?: {
+      getRecord(config: { Entity: string; RecordID: string }): Promise<{ data?: any[] }>;
+    };
   };
 }
 

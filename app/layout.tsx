@@ -20,7 +20,7 @@ export default function RootLayout({
       <body className={`${inter.variable} font-sans`}>
         {/* Zoho SDK Script - Load early for widget initialization */}
         <Script
-          src="https://live.zwidgets.com/js-sdk/1.1/ZohoEmbededAppSDK.min.js"
+          src="https://live.zwidgets.com/js-sdk/1.5/ZohoEmbededAppSDK.min.js"
           strategy="afterInteractive"
         />
         {children}

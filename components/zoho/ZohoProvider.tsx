@@ -76,14 +76,18 @@ export function ZohoProvider({ children, config }: ZohoProviderProps) {
     }));
 
     try {
-      // Fetch full record data if not provided
+      // Fetch full record data if not provided - use ZOHO.CRM.API.getRecord (PageLoad only gives EntityId + Entity)
       let recordData = pageLoadData.recordData;
-      
+
       if (!recordData) {
         const sdk = getZohoSDK();
-        if (sdk) {
+        if (sdk?.CRM?.API?.getRecord) {
           try {
-            recordData = await sdk.embeddedApp.getRecordData();
+            const res = await sdk.CRM.API.getRecord({
+              Entity: pageLoadData.Entity,
+              RecordID: String(pageLoadData.EntityId),
+            });
+            recordData = res?.data?.[0] ?? null;
           } catch (error) {
             console.warn('Failed to fetch record data:', error);
           }
@@ -167,20 +171,30 @@ export function ZohoProvider({ children, config }: ZohoProviderProps) {
     };
   }, [config?.clientId, handlePageLoad]);
 
-  // Refresh current record data
+  // Refresh current record data via ZOHO.CRM.API.getRecord
   const refreshRecord = useCallback(async () => {
     const sdk = getZohoSDK();
     if (!sdk) {
       throw new Error('Zoho SDK is not available');
     }
+    if (!recordContext.entityId || !recordContext.entityType) {
+      throw new Error('No record context');
+    }
+    if (!sdk.CRM?.API?.getRecord) {
+      throw new Error('ZOHO.CRM.API.getRecord is not available');
+    }
 
     setRecordContext((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const recordData = await sdk.embeddedApp.getRecordData();
+      const res = await sdk.CRM.API.getRecord({
+        Entity: recordContext.entityType,
+        RecordID: String(recordContext.entityId),
+      });
+      const recordData = res?.data?.[0] ?? null;
       setRecordContext((prev) => ({
         ...prev,
-        recordData: recordData || null,
+        recordData,
         isLoading: false,
         error: null,
       }));
@@ -193,7 +207,7 @@ export function ZohoProvider({ children, config }: ZohoProviderProps) {
       }));
       throw err;
     }
-  }, []);
+  }, [recordContext.entityId, recordContext.entityType]);
 
   // Execute Zoho SDK action
   const executeAction = useCallback(async (action: string, params?: any) => {

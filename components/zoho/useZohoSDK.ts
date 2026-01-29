@@ -15,7 +15,7 @@ import { executeZohoAction } from '@/lib/zoho/utils';
  * - SDK state information
  */
 export function useZohoSDK() {
-  const { sdk, sdkState, executeAction } = useZohoContext();
+  const { sdk, sdkState, executeAction, recordContext } = useZohoContext();
 
   /**
    * Check if SDK is ready
@@ -49,13 +49,23 @@ export function useZohoSDK() {
   };
 
   /**
-   * Get current record data
+   * Get current record data via ZOHO.CRM.API.getRecord (Entity + RecordID from PageLoad context).
    */
   const getRecordData = async (): Promise<any> => {
     if (!sdk) {
       throw new Error('Zoho SDK is not available');
     }
-    return sdk.embeddedApp.getRecordData();
+    if (!sdk.CRM?.API?.getRecord) {
+      throw new Error('ZOHO.CRM.API.getRecord is not available');
+    }
+    if (!recordContext.entityId || !recordContext.entityType) {
+      throw new Error('No record context');
+    }
+    const res = await sdk.CRM.API.getRecord({
+      Entity: recordContext.entityType,
+      RecordID: String(recordContext.entityId),
+    });
+    return res?.data?.[0] ?? null;
   };
 
   /**

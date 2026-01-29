@@ -124,7 +124,7 @@ export function loadZohoSDK(
 
   // Create and load script
   const script = document.createElement('script');
-  script.src = 'https://live.zwidgets.com.au/js-sdk/1.1/ZohoEmbededAppSDK.min.js';
+  script.src = 'https://live.zwidgets.com/js-sdk/1.5/ZohoEmbededAppSDK.min.js';
   script.async = true;
   script.onload = () => {
     // Give SDK a moment to initialize
