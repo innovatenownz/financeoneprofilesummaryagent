@@ -1,22 +1,22 @@
 import json
 import google.generativeai as genai
-from datetime import date
 
 # --- 1. CONFIGURATION ---
 
-# Related List Configuration (for fetching details)
+# Related List Configuration
 SPECIFIC_LIST_CONFIG = {
-    "Repayment": ["Payment_Date", "Amount", "Status", "Payment_Type"], 
+    "Notes": ["Note_Title", "Note_Content", "Created_Time", "Owner"],
+    "Tasks": ["Subject", "Status", "Priority", "Due_Date"],
     "Calls": ["Subject", "Call_Type", "Call_Duration", "Call_Start_Time"],
     "Events": ["Event_Title", "Start_DateTime", "End_DateTime", "Location"],
-    "Tasks_History": ["Subject", "Status", "Priority", "Closed_Time"]
+    "Attachments": ["File_Name", "Size", "Created_Time"]
 }
 
-# --- KNOWLEDGE BASE: LOAN STRUCTURE SCHEMA ---
-# [UPDATED] Added 'target' keys so main.py can resolve lookups automatically
-LOAN_STRUCT_SCHEMA = [
+# --- KNOWLEDGE BASE: DOCUMENT TYPES SCHEMA ---
+DOCUMENT_TYPES_SCHEMA = [
     {"api": "id", "type": "text"},
-    {"api": "Name", "type": "text"}, # Structure Name
+    {"api": "Name", "type": "autonumber"}, # Document Type Name (Auto Number)
+    {"api": "Document", "type": "text"}, # Actual Name/Label of the Document Type
     {"api": "Record_Status__s", "type": "picklist"},
     {"api": "Owner", "type": "ownerlookup", "target": "Users"},
     {"api": "Created_By", "type": "ownerlookup", "target": "Users"},
@@ -27,67 +27,49 @@ LOAN_STRUCT_SCHEMA = [
     {"api": "Tag", "type": "text"},
     {"api": "Unsubscribed_Mode", "type": "picklist"},
     {"api": "Unsubscribed_Time", "type": "datetime"},
+    {"api": "Email", "type": "email"},
+    {"api": "Secondary_Email", "type": "email"},
+    {"api": "Email_Opt_Out", "type": "boolean"},
     
-    # Core Structure Details
-    {"api": "Loan_Structure_Type", "type": "picklist"}, # Fixed, Variable
-    {"api": "Product", "type": "lookup", "target": "Products"},
-    {"api": "Loan", "type": "lookup", "target": "Loans"}, # Parent Loan
-    {"api": "Status", "type": "picklist"},
-    {"api": "Locked__s", "type": "boolean"},
-    
-    # Financials
-    {"api": "Current_Balance", "type": "currency"},
-    {"api": "Original_Balance", "type": "currency"},
-    {"api": "Monthly_Payment", "type": "currency"},
-    {"api": "Cashback_Amount", "type": "currency"},
-    {"api": "Interest_Rate", "type": "percent"},
-    {"api": "Frequency", "type": "picklist"},
-    {"api": "Tenure", "type": "integer"},
-    
-    # Terms & Dates
-    {"api": "Fixed_Period", "type": "integer"},
-    {"api": "Fixed_Period_Start_Date", "type": "date"},
-    {"api": "Fixed_Period_End_Date", "type": "date"}, # Critical for refinance
-    {"api": "Interest_Only", "type": "picklist"},
-    {"api": "Interest_only_Start_Date", "type": "date"},
-    {"api": "Interest_only_End_Date", "type": "date"},
-    {"api": "Next_Repayment_Date", "type": "date"},
-    
-    # Advisory Team
-    {"api": "Primary_Advisor", "type": "userlookup", "target": "Users"},
-    {"api": "Secondary_Advisor", "type": "userlookup", "target": "Users"},
-    {"api": "Loan_Structure_Owners", "type": "multiuserlookup", "target": "Users"}
+    # Configuration Details
+    {"api": "Document_Category", "type": "picklist"}, # e.g. Legal, Financial
+    {"api": "Sensitivity_Level", "type": "picklist"}, # e.g. Confidential, Public
+    {"api": "Retention_Period", "type": "integer"}, # Days/Months/Years (Context dependent)
+    {"api": "Allowed_Formats", "type": "multiselectpicklist"}, # e.g. PDF, DOCX
+    {"api": "Description_Instructions", "type": "textarea"},
+    {"api": "Locked__s", "type": "boolean"}
 ]
 
-class LoanStructuresAgent:
+class DocumentTypesAgent:
     def __init__(self, model):
         self.model = model
-        self.schema_string = "\n".join([f"- {f['api']} ({f['type']})" for f in LOAN_STRUCT_SCHEMA])
+        self.schema_string = "\n".join([f"- {f['api']} ({f['type']})" for f in DOCUMENT_TYPES_SCHEMA])
 
     def format_data_for_ai(self, record: dict) -> str:
         """
-        Parses Loan Structure JSON into a clean, readable text block.
+        Parses Document Type JSON into a clean, readable text block.
         """
-        if not record: return "No Loan Structure Data Available."
+        if not record: return "No Document Type Data Available."
 
         # === 1. LIST MODE (Context Switch / Search Results) ===
         if "items" in record:
             items = record["items"]
-            if not items: return "No Loan Structures found."
+            if not items: return "No Document Types found."
             
-            lines = [f"=== FOUND {len(items)} STRUCTURES ==="]
+            lines = [f"=== FOUND {len(items)} DOCUMENT TYPES ==="]
             for i, item in enumerate(items, 1):
-                lines.append(f"\n--- Structure #{i} ---")
+                lines.append(f"\n--- Type #{i} ---")
                 
                 # A. ALWAYS show identifiers
                 if "id" in item: lines.append(f"ID: {item['id']}")
-                if "Name" in item: lines.append(f"Name: {item['Name']}")
+                if "Name" in item: lines.append(f"Ref: {item['Name']}")
+                if "Document" in item: lines.append(f"Type Name: {item['Document']}")
                 
-                # B. FORCE SHOW critical fields even if empty (for Updates)
-                critical_fields = ["Current_Balance", "Interest_Rate", "Fixed_Period_End_Date", "Status"]
+                # B. FORCE SHOW critical fields
+                critical_fields = ["Document_Category", "Sensitivity_Level", "Retention_Period"]
                 
                 for k, v in item.items():
-                    if k not in ["id", "Name", "Tag"]:
+                    if k not in ["id", "Name", "Tag", "Document"]:
                         val_display = v
                         if isinstance(v, dict) and "name" in v: val_display = v["name"]
                         
@@ -98,10 +80,10 @@ class LoanStructuresAgent:
             return "\n".join(lines)
 
         # === 2. SINGLE RECORD MODE ===
-        lines = ["=== LOAN STRUCTURE (SPLIT) DETAILS ==="]
+        lines = ["=== DOCUMENT TYPE DETAILS ==="]
 
         # Process Standard Fields
-        for field in LOAN_STRUCT_SCHEMA:
+        for field in DOCUMENT_TYPES_SCHEMA:
             key = field['api']
             val = record.get(key)
 
@@ -111,22 +93,18 @@ class LoanStructuresAgent:
             # Formatting Lookups
             if isinstance(val, dict) and "name" in val: val = val["name"]
             
-            # Formatting Percent
-            if field['type'] == 'percent': val = f"{val}%"
-            
-            # Formatting Currency
-            if field['type'] == 'currency': val = f"${val}"
-            
-            # Formatting Multi-User Lookups
-            if key == "Loan_Structure_Owners" and isinstance(val, list):
-                names = [u.get("name", "Unknown") for u in val if isinstance(u, dict)]
-                val = ", ".join(names)
+            # Formatting Multi-Select
+            if field['type'] == 'multiselectpicklist' and isinstance(val, list):
+                val = ", ".join(val)
+
+            # Formatting Booleans
+            if field['type'] == 'boolean': val = "Yes" if val else "No"
 
             clean_key = key.replace("_", " ")
             lines.append(f"{clean_key}: {val}")
 
         # Process Related Lists
-        lines.append("\n--- RELATED HISTORY ---")
+        lines.append("\n--- RELATED ACTIVITY ---")
         list_keys = [k for k, v in record.items() if isinstance(v, list) and k != "Tag"]
         
         found_details = False
@@ -142,6 +120,7 @@ class LoanStructuresAgent:
 
             for i, item in enumerate(items, 1):
                 row_parts = []
+                if "id" in item: row_parts.append(f"ID: {item['id']}")
                 
                 if config_key:
                     for f in SPECIFIC_LIST_CONFIG[config_key]:
@@ -149,7 +128,7 @@ class LoanStructuresAgent:
                         if val: row_parts.append(f"{f}: {val}")
                 else:
                     # Auto-Detect
-                    priority_keywords = ["date", "amount", "status", "subject", "type"]
+                    priority_keywords = ["subject", "name", "status", "date"]
                     def key_func(k):
                         low = k.lower()
                         for idx, kw in enumerate(priority_keywords):
@@ -163,20 +142,19 @@ class LoanStructuresAgent:
                         if val and isinstance(val, (str, int, float)) and k.lower() != "id":
                             row_parts.append(f"{k}: {val}")
                             count += 1
-                        if count >= 4: break
+                        if count >= 3: break
                 
                 lines.append(f"  {i}. " + " | ".join(row_parts))
 
-        if not found_details: lines.append("(No recent repayment history or activities found)")
+        if not found_details: lines.append("(No recent notes or activities found)")
 
         return "\n".join(lines)
 
-    def generate_response(self, user_query: str, struct_data: dict, history: list = []) -> str:
+    def generate_response(self, user_query: str, doc_type_data: dict, history: list = []) -> str:
         """
-        Generates a response answering questions about the Loan Structure.
+        Generates a response answering questions about the Document Type.
         """
-        context_text = self.format_data_for_ai(struct_data)
-        today = date.today().isoformat()
+        context_text = self.format_data_for_ai(doc_type_data)
 
         # Format History
         history_block = ""
@@ -188,14 +166,13 @@ class LoanStructuresAgent:
                 history_block += f"{role}: {content}\n"
 
         prompt = f"""
-        You are an expert Mortgage Broker & Credit Analyst.
+        You are an expert Document Controller & Compliance Officer.
         
         ### DATA SCHEMA
         {self.schema_string}
 
-        ### STRUCTURE CONTEXT
+        ### DOCUMENT TYPE CONTEXT
         {context_text}
-        (Current Date: {today})
         
         {history_block}
 
@@ -205,18 +182,19 @@ class LoanStructuresAgent:
         ### INSTRUCTIONS
         - Answer based ONLY on the data provided.
         - **Updates:** Include `record_id` for updates.
-        - **Lookups:** If the user provides a Loan Name or Product, pass it as text. My system will convert it.
-        - **Risk:** Check 'Fixed Period End Date'. If within 90 days of {today}, flag as Refinance Trigger.
+        - **Policy:** Explain 'Retention Period' and 'Sensitivity Level'.
+        - **Formats:** List 'Allowed Formats'.
+        - **Instructions:** Mention any specific 'Description/Instructions'.
 
         ### ACTION PROTOCOL
         <<<ACTION>>>
         {{
             "action": "create" | "update",
-            "module": "Loan_Structures_New", 
+            "module": "Document_Types", 
             "record_id": "12345",
             "data": {{ 
-                "Name": "REQUIRED_STRUCTURE_NAME",
-                "Interest_Rate": "5.5",
+                "Document": "REQUIRED_DOC_NAME",
+                "Document_Category": "Legal",
                 "Field_Name": "Value" 
             }}
         }}

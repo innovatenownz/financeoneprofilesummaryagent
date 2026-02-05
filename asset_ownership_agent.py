@@ -2,37 +2,22 @@ import json
 import google.generativeai as genai
 
 # --- KNOWLEDGE BASE: ASSET OWNERSHIP SCHEMA ---
+# [CRITICAL] Added 'target' so main.py knows where to search for IDs
 ASSET_OWNERSHIP_SCHEMA = [
-    # Core Identity
-    {"api": "Name", "type": "text"}, # Ownership Record Name
-    {"api": "Ownership", "type": "picklist"}, # Joint, Sole, etc.
+    {"api": "id", "type": "text"},
+    {"api": "Name", "type": "text"}, 
+    {"api": "Ownership", "type": "picklist"}, 
     {"api": "Ownership_Status", "type": "picklist"},
     {"api": "Asset_Type", "type": "picklist"},
-    
-    # Valuation & Share
     {"api": "Share_Percentage", "type": "percent"},
-    {"api": "Share_Value_Total", "type": "formula (currency)"}, # The value of THIS share
+    {"api": "Share_Value_Total", "type": "currency"}, 
     {"api": "Asset_Value", "type": "currency"},
     {"api": "Real_Estate_Value", "type": "currency"},
     {"api": "Investment_Holding_Value", "type": "currency"},
     
-    # Owners
-    {"api": "Client", "type": "lookup (Contact)"},
-    {"api": "Households", "type": "lookup (Account)"},
-    
-    # Underlying Assets (Lookups)
-    {"api": "Asset", "type": "lookup (General Asset)"},
-    {"api": "Real_Estate", "type": "lookup (Real Estate)"},
-    {"api": "Investment_Holding", "type": "lookup (Investment)"},
-    {"api": "Associated_portfolio", "type": "lookup (Portfolio)"},
-    
-    # Advisory Team
-    {"api": "Primary_Advisor", "type": "userlookup"},
-    {"api": "Secondary_Advisor", "type": "userlookup"},
-    {"api": "Asset_Management_Team", "type": "multiuserlookup"},
-    
-    # System
-    {"api": "Record_Status__s", "type": "picklist"}
+    # [FIX] Define target modules for lookups
+    {"api": "Client", "type": "lookup", "target": "Contacts"},
+    {"api": "Households", "type": "lookup", "target": "Accounts"},
 ]
 
 class AssetOwnershipAgent:
@@ -41,70 +26,78 @@ class AssetOwnershipAgent:
         self.schema_string = "\n".join([f"- {f['api']} ({f['type']})" for f in ASSET_OWNERSHIP_SCHEMA])
 
     def format_data_for_ai(self, record: dict) -> str:
-        """
-        Parses Asset Ownership JSON into a clean, readable text block.
-        """
-        if not record:
-            return "No Asset Ownership Data Available."
+        if not record: return "No Asset Data Available."
 
-        lines = ["=== ASSET OWNERSHIP DETAILS ==="]
+        # LIST MODE
+        if "items" in record:
+            items = record["items"]
+            if not items: return "No Assets found linked to this Account."
+            
+            lines = [f"=== FOUND {len(items)} ASSETS ==="]
+            for i, item in enumerate(items, 1):
+                lines.append(f"\n--- Asset #{i} ---")
+                if "id" in item: lines.append(f"ID: {item['id']}")
+                if "Name" in item: lines.append(f"Name: {item['Name']}")
+                
+                # Show key fields even if empty
+                critical_fields = ["Ownership_Status", "Ownership", "Asset_Type", "Asset_Value", "Client"]
+                for k, v in item.items():
+                    if k not in ["id", "Name", "Tag"]:
+                        val_display = v
+                        if isinstance(v, dict) and "name" in v: val_display = v["name"]
+                        if v or k in critical_fields:
+                            if not v: val_display = "[Empty]"
+                            lines.append(f"{k}: {val_display}")
+            return "\n".join(lines)
 
-        # 1. Process Fields
+        # SINGLE MODE
+        lines = ["=== ASSET DETAILS ==="]
         for field in ASSET_OWNERSHIP_SCHEMA:
             key = field['api']
             val = record.get(key)
-
-            if val in [None, "", [], {}]:
-                continue
-            
-            # Formatting Lookups
-            if isinstance(val, dict) and "name" in val:
-                val = val["name"]
-            
-            # Formatting Currency
-            if "currency" in field['type']:
-                val = f"${val}"
-            
-            # Formatting Percent
-            if field['type'] == 'percent':
-                val = f"{val}%"
-                
-            # Formatting Multi-User Lookups
-            if key == "Asset_Management_Team" and isinstance(val, list):
-                names = [u.get("name", "Unknown") for u in val]
-                val = ", ".join(names)
-
+            if val in [None, "", [], {}]: continue
+            if isinstance(val, dict) and "name" in val: val = val["name"]
             lines.append(f"{key}: {val}")
-
         return "\n".join(lines)
 
-    def generate_response(self, user_query: str, ownership_data: dict) -> str:
-        """
-        Generates a response answering questions about the Asset Ownership.
-        """
+    def generate_response(self, user_query: str, ownership_data: dict, history: list = []) -> str:
         context_text = self.format_data_for_ai(ownership_data)
 
+        history_block = ""
+        if history:
+            history_block = "### HISTORY\n" + "\n".join([f"{m.get('role')}: {m.get('content')}" for m in history[-3:]])
+
         prompt = f"""
-        You are an expert Asset Manager & Wealth Analyst.
-        
-        Your goal is to analyze this ASSET OWNERSHIP RECORD based on the data below.
+        You are an expert Asset Manager.
         
         ### DATA SCHEMA
         {self.schema_string}
 
-        ### OWNERSHIP CONTEXT
+        ### ASSET DATA
         {context_text}
+        
+        {history_block}
 
         ### USER QUESTION
         "{user_query}"
 
         ### INSTRUCTIONS
-        - **The Stake:** Identify the Client/Household and their 'Share_Percentage'.
-        - **The Value:** State the 'Share_Value_Total' (Client's portion) vs the total asset value.
-        - **The Asset:** Identify WHAT is owned (Real Estate, Investment, or General Asset).
-        - **Advisory:** Mention the 'Primary_Advisor' managing this asset.
-        
-        Answer:
+        - Answer based ONLY on the data provided.
+        - **Updates:** If updating, use the `record_id` visible in the list.
+        - **Lookups:** If the user provides a Client Name (e.g. "Kane"), pass it as the text value for "Client". My system will convert it to an ID.
+
+        ### ACTION PROTOCOL
+        <<<ACTION>>>
+        {{
+            "action": "create" | "update",
+            "module": "Asset_Ownership_New", 
+            "record_id": "12345",
+            "data": {{ 
+                "Name": "REQUIRED_ASSET_NAME",  <-- MUST BE INCLUDED
+                "Field_Name": "Value" 
+            }}
+        }}
+        <<<END_ACTION>>>
         """
         
         response = self.model.generate_content(prompt)

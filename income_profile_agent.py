@@ -1,32 +1,53 @@
 import json
 import google.generativeai as genai
 
+# --- 1. CONFIGURATION ---
+
+# Related List Configuration (for fetching details)
+SPECIFIC_LIST_CONFIG = {
+    "Income_Records": ["Name", "Amount", "Income_Type", "Frequency", "Status"], 
+    "Tasks": ["Subject", "Status", "Priority", "Due_Date"],
+    "Calls": ["Subject", "Call_Type", "Call_Duration", "Call_Start_Time"],
+    "Events": ["Event_Title", "Start_DateTime", "End_DateTime", "Location"],
+    "CheckLists": ["Name", "Status", "Created_Time"]
+}
+
 # --- KNOWLEDGE BASE: INCOME PROFILE SCHEMA ---
+# [UPDATED] Added 'target' keys so main.py can resolve lookups automatically
 INCOME_SCHEMA = [
-    # Core Profile Info
-    {"api": "Name", "type": "text"}, # Profile Name
-    {"api": "Income_Profile_Type", "type": "picklist"}, # e.g. Employment, Business, Retirement
+    {"api": "id", "type": "text"},
+    {"api": "Name", "type": "text"}, # Income Profile Name
     {"api": "Record_Status__s", "type": "picklist"},
+    {"api": "Owner", "type": "ownerlookup", "target": "Users"},
+    {"api": "Created_By", "type": "ownerlookup", "target": "Users"},
+    {"api": "Modified_By", "type": "ownerlookup", "target": "Users"},
+    {"api": "Created_Time", "type": "datetime"},
+    {"api": "Modified_Time", "type": "datetime"},
+    {"api": "Last_Activity_Time", "type": "datetime"},
+    {"api": "Tag", "type": "text"},
+    {"api": "Unsubscribed_Mode", "type": "picklist"},
+    {"api": "Unsubscribed_Time", "type": "datetime"},
     
-    # Financial Totals (The Rollups are key here)
+    # Financial Totals & Rollups
     {"api": "Total_Annual_Income", "type": "currency"},
-    {"api": "Total_Active_Income_Annual1", "type": "rollup_summary"}, # Salary/Business
-    {"api": "Total_Asset_Income_Annual1", "type": "rollup_summary"}, # Investments
-    {"api": "Total_Real_estate_Income_Annual", "type": "rollup_summary"},
     {"api": "Total_Investment_holding_Income_Annual", "type": "rollup_summary"},
+    {"api": "Total_Real_estate_Income_Annual", "type": "rollup_summary"},
+    {"api": "Total_Asset_Income_Annual1", "type": "rollup_summary"},
+    {"api": "Total_Active_Income_Annual1", "type": "rollup_summary"},
     
-    # Relationships
-    {"api": "Client", "type": "lookup (Contact)"},
-    {"api": "Household", "type": "lookup (Account)"},
-    {"api": "Fact_Find", "type": "lookup (Custom)"}, # Link to data gathering
+    # Classification
+    {"api": "Income_Profile_Type", "type": "picklist"},
+    {"api": "Locked__s", "type": "boolean"},
+    
+    # Relationships (Lookups with Targets)
+    {"api": "Fact_Find", "type": "lookup", "target": "Fact_Find"},
+    {"api": "Client", "type": "lookup", "target": "Contacts"},
+    {"api": "Household", "type": "lookup", "target": "Accounts"},
     
     # Advisory Team
-    {"api": "Primary_Advisor", "type": "userlookup"},
-    {"api": "Secondary_Advisor", "type": "userlookup"},
-    {"api": "Income_Profile_Owners", "type": "multiuserlookup"},
-    
-    # System
-    {"api": "Created_Time", "type": "datetime"}
+    {"api": "Primary_Advisor", "type": "userlookup", "target": "Users"},
+    {"api": "Secondary_Advisor", "type": "userlookup", "target": "Users"},
+    {"api": "Income_Profile_Owners", "type": "multiuserlookup", "target": "Users"}
 ]
 
 class IncomeProfileAgent:
@@ -38,12 +59,39 @@ class IncomeProfileAgent:
         """
         Parses Income Profile JSON into a clean, readable text block.
         """
-        if not record:
-            return "No Income Profile Data Available."
+        if not record: return "No Income Profile Data Available."
 
+        # === 1. LIST MODE (Context Switch / Search Results) ===
+        if "items" in record:
+            items = record["items"]
+            if not items: return "No Income Profiles found."
+            
+            lines = [f"=== FOUND {len(items)} INCOME PROFILES ==="]
+            for i, item in enumerate(items, 1):
+                lines.append(f"\n--- Profile #{i} ---")
+                
+                # A. ALWAYS show identifiers
+                if "id" in item: lines.append(f"ID: {item['id']}")
+                if "Name" in item: lines.append(f"Name: {item['Name']}")
+                
+                # B. FORCE SHOW critical fields even if empty (for Updates)
+                critical_fields = ["Total_Annual_Income", "Income_Profile_Type", "Client", "Household"]
+                
+                for k, v in item.items():
+                    if k not in ["id", "Name", "Tag"]:
+                        val_display = v
+                        if isinstance(v, dict) and "name" in v: val_display = v["name"]
+                        
+                        # Show if value exists OR if it is critical
+                        if v or k in critical_fields:
+                            if not v and v is not False: val_display = "[Empty]"
+                            lines.append(f"{k}: {val_display}")
+            return "\n".join(lines)
+
+        # === 2. SINGLE RECORD MODE ===
         lines = ["=== INCOME PROFILE DETAILS ==="]
 
-        # 1. Process Fields
+        # Process Standard Fields
         for field in INCOME_SCHEMA:
             key = field['api']
             val = record.get(key)
@@ -52,47 +100,110 @@ class IncomeProfileAgent:
                 continue
             
             # Formatting Lookups
-            if isinstance(val, dict) and "name" in val:
-                val = val["name"]
+            if isinstance(val, dict) and "name" in val: val = val["name"]
             
-            # Formatting Currency
-            if field['type'] in ['currency', 'rollup_summary']:
-                val = f"${val}"
+            # Formatting Currency & Rollups
+            if field['type'] in ['currency', 'rollup_summary']: val = f"${val}"
             
             # Formatting Multi-User Lookups
             if key == "Income_Profile_Owners" and isinstance(val, list):
-                names = [u.get("name", "Unknown") for u in val]
+                names = [u.get("name", "Unknown") for u in val if isinstance(u, dict)]
                 val = ", ".join(names)
 
-            lines.append(f"{key}: {val}")
+            clean_key = key.replace("_", " ")
+            lines.append(f"{clean_key}: {val}")
+
+        # Process Related Lists
+        lines.append("\n--- RELATED INCOME DATA ---")
+        list_keys = [k for k, v in record.items() if isinstance(v, list) and k != "Tag"]
+        
+        found_details = False
+        for list_name in list_keys:
+            items = record[list_name]
+            if not items: continue
+
+            clean_name = list_name.replace("Related_", "")
+            lines.append(f"\n# {clean_name} ({len(items)} items)")
+            found_details = True
+            
+            config_key = next((k for k in SPECIFIC_LIST_CONFIG if k == clean_name), None)
+
+            for i, item in enumerate(items, 1):
+                row_parts = []
+                if "id" in item: row_parts.append(f"ID: {item['id']}")
+                
+                if config_key:
+                    for f in SPECIFIC_LIST_CONFIG[config_key]:
+                        val = item.get(f)
+                        if val: row_parts.append(f"{f}: {val}")
+                else:
+                    # Auto-Detect
+                    priority_keywords = ["name", "amount", "value", "date", "type"]
+                    def key_func(k):
+                        low = k.lower()
+                        for idx, kw in enumerate(priority_keywords):
+                            if kw in low: return idx
+                        return len(priority_keywords)
+                    sorted_keys = sorted(item.keys(), key=key_func)
+                    
+                    count = 0
+                    for k in sorted_keys:
+                        val = item.get(k)
+                        if val and isinstance(val, (str, int, float)) and k.lower() != "id":
+                            row_parts.append(f"{k}: {val}")
+                            count += 1
+                        if count >= 3: break
+                
+                lines.append(f"  {i}. " + " | ".join(row_parts))
+
+        if not found_details: lines.append("(No related income records or activities found)")
 
         return "\n".join(lines)
 
-    def generate_response(self, user_query: str, income_data: dict) -> str:
+    def generate_response(self, user_query: str, income_data: dict, history: list = []) -> str:
         """
         Generates a response answering questions about the Income Profile.
         """
         context_text = self.format_data_for_ai(income_data)
 
+        # Format History
+        history_block = ""
+        if history:
+            history_block = "### HISTORY\n" + "\n".join([f"{m.get('role')}: {m.get('content')}" for m in history[-3:]])
+
         prompt = f"""
         You are an expert Financial Analyst & Wealth Manager.
-        
-        Your goal is to analyze this INCOME PROFILE based on the data below.
         
         ### DATA SCHEMA
         {self.schema_string}
 
         ### INCOME CONTEXT
         {context_text}
+        
+        {history_block}
 
         ### USER QUESTION
         "{user_query}"
 
         ### INSTRUCTIONS
-        - **Total Picture:** State the 'Total_Annual_Income'.
-        - **Breakdown:** Compare 'Active Income' (Salary) vs 'Asset Income' (Investments). This shows financial independence.
-        - **Ownership:** Identify who (Client/Household) this income belongs to.
-        - **Advisory:** Note the 'Primary_Advisor' managing this profile.
+        - Answer based ONLY on the data provided.
+        - **Updates:** Include `record_id` for updates.
+        - **Lookups:** If the user provides a Client Name or Household Name, pass it as text. My system will convert it.
+        - **Total Picture:** State the 'Total Annual Income' clearly.
+
+        ### ACTION PROTOCOL
+        <<<ACTION>>>
+        {{
+            "action": "create" | "update",
+            "module": "Income_Profile_New", 
+            "record_id": "12345",
+            "data": {{ 
+                "Name": "REQUIRED_NAME",
+                "Total_Annual_Income": "50000",
+                "Field_Name": "Value" 
+            }}
+        }}
+        <<<END_ACTION>>>
         
         Answer:
         """

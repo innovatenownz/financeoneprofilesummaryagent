@@ -1,48 +1,60 @@
-import json
 import google.generativeai as genai
+import json
 
-# --- 1. DEFINING THE KNOWLEDGE BASE (SCHEMA) ---
-# The AI uses this to understand what the data MEANS before it even looks at the values.
+# --- 1. CONFIGURATION ---
+# [UPDATED] Full Schema Mapping based on provided field list
 ACCOUNT_SCHEMA = [
-    {"api": "Owner", "type": "lookup (User)"},
+    {"api": "Owner", "type": "ownerlookup"},
     {"api": "Account_Name", "type": "text"},
     {"api": "Parent_Account", "type": "lookup"},
-    {"api": "Website", "type": "url"},
+    {"api": "Website", "type": "website"},
     {"api": "Ticker_Symbol", "type": "text"},
     {"api": "Account_Type", "type": "picklist"},
+    {"api": "Ownership", "type": "picklist"},
     {"api": "Industry", "type": "picklist"},
     {"api": "Employees", "type": "integer"},
     {"api": "Annual_Revenue", "type": "currency"},
-    {"api": "Tag", "type": "jsonarray"},
+    {"api": "Created_By", "type": "ownerlookup"},
+    {"api": "Modified_By", "type": "ownerlookup"},
+    {"api": "Created_Time", "type": "datetime"},
+    {"api": "Modified_Time", "type": "datetime"},
+    {"api": "Last_Activity_Time", "type": "datetime"},
+    {"api": "Tag", "type": "text"}, # Simplified from text (jsonarray)
     {"api": "Description", "type": "textarea"},
+    {"api": "id", "type": "bigint"},
+    {"api": "Change_Log_Time__s", "type": "datetime"},
+    {"api": "Locked__s", "type": "boolean"},
+    {"api": "Last_Enriched_Time__s", "type": "datetime"},
+    {"api": "Enrich_Status__s", "type": "picklist"},
+    {"api": "Record_Status__s", "type": "picklist"},
     {"api": "Household_ID", "type": "integer"},
     {"api": "Status", "type": "picklist"},
-    {"api": "Primary_Contact1", "type": "lookup (Contact)"},
+    {"api": "Primary_Contact1", "type": "lookup"},
     {"api": "Real_estate_income", "type": "currency"},
     {"api": "Total_Asset_Value", "type": "currency"},
     {"api": "Total_Liabilites", "type": "currency"},
     {"api": "Trust_Type", "type": "picklist"},
     {"api": "State", "type": "text"},
     {"api": "Country", "type": "text"},
+    {"api": "Zip_Code", "type": "text"},
     {"api": "City", "type": "text"},
     {"api": "Street", "type": "text"},
-    {"api": "Zip_Code", "type": "text"},
     {"api": "Trust_Registration_ID_Number", "type": "text"},
     {"api": "Trust_Establishment_Date", "type": "date"},
-    {"api": "Net_Worth", "type": "formula (currency)"},
+    {"api": "Net_Worth", "type": "formula"},
     {"api": "Trust_Purpose", "type": "textarea"},
     {"api": "Family_Type", "type": "picklist"},
-    {"api": "Total_Members", "type": "rollup (count)"},
+    {"api": "Total_Members", "type": "rollup_summary"},
     {"api": "Interest_Level", "type": "picklist"},
     {"api": "Household_Segment", "type": "picklist"},
-    {"api": "Total_General_Asset_Value", "type": "rollup (currency)"},
-    {"api": "Total_Real_Estate_Value", "type": "rollup (currency)"},
-    {"api": "Total_Investment_Holding_Values", "type": "rollup (currency)"},
+    {"api": "Total_General_Asset_Value", "type": "rollup_summary"},
+    {"api": "Total_Real_Estate_Value", "type": "rollup_summary"},
+    {"api": "Total_Investment_Holding_Values", "type": "rollup_summary"},
     {"api": "Total_Annual_Income", "type": "currency"},
     {"api": "Trust_Income", "type": "currency"},
     {"api": "Family_Income", "type": "currency"},
     {"api": "Business_Group_Income", "type": "currency"},
-    {"api": "Professional_Contact", "type": "rollup (count)"},
+    {"api": "Professional_Contact", "type": "rollup_summary"},
     {"api": "Lead_Source", "type": "picklist"},
     {"api": "Referring_account", "type": "lookup"},
     {"api": "Inquiry_Type", "type": "picklist"},
@@ -57,114 +69,133 @@ ACCOUNT_SCHEMA = [
     {"api": "Secondary_Advisor", "type": "userlookup"},
     {"api": "NZBN_Number", "type": "text"},
     {"api": "Entity_Status", "type": "text"},
-    # Subforms
     {"api": "Account_Relations", "type": "subform"},
     {"api": "Account_Client_Relation", "type": "subform"},
+    {"api": "Wizard", "type": "bigint"}
 ]
+
+# Keys here MUST match the API names used in main.py
+SPECIFIC_LIST_CONFIG = {
+    "Notes": ["Note_Title", "Note_Content", "Created_Time", "Owner"],
+    "Deals": ["Deal_Name", "Stage", "Amount", "Closing_Date"],
+    "Activities": ["Subject", "Status", "Priority", "Due_Date"],
+    "Asset_Ownerships_New": ["Asset_Type", "Real_Estate_Value", "Asset_Ownership", "Ownership", "Share_Percentage"],
+    "Loans": ["Name", "Amount", "Interest_Rate", "Lender"],
+    "Insurance_policy_New": ["Policy_Name", "Sum_Assured", "Policy_Status"],
+    "Entity_KYC_New": ["Name", "Status", "Verification_Date"],
+    "Income_Profile_New": ["Name", "Total_Annual_Income"],
+    "Associated_portfolio": ["Portfolio_Name", "Total_Value"],
+    "Tax_profile": ["Name"],
+    "Account_Risks": ["Name", "Risk_Level", "Description"],
+    "Professional_Contacts_New": ["Name", "Role", "Email"],
+    "Expenses_New": ["Name", "Amount", "Date"],
+    "Household_Relationships_New": ["Name", "Role"]
+}
 
 class AccountAgent:
     def __init__(self, model):
         self.model = model
-        # Pre-format the schema string for the system prompt
-        self.schema_string = "\n".join([f"- {item['api']} ({item['type']})" for item in ACCOUNT_SCHEMA])
 
     def format_data_for_ai(self, record: dict) -> str:
-        """
-        Converts the raw JSON record into a readable text format, 
-        handling Subforms and Related lists specifically for Accounts.
-        """
-        if not record:
-            return "No Account Data Found."
+        if not record: return "No Account Data Found."
+        # DEBUG
+        print(f"🧐 AGENT SEES: {list(record.keys())}")
 
-        text_lines = ["=== ACCOUNT RECORD DETAILS ==="]
-
-        # 1. Process Main Fields based on Schema
-        # We loop through the SCHEMA first to ensure we look for the right fields
+        lines = ["=== CLIENT DASHBOARD ==="]
+        lines.append("--- Overview ---")
         for field in ACCOUNT_SCHEMA:
-            key = field['api']
-            val = record.get(key)
-            dtype = field['type']
+            val = record.get(field['api'])
+            if val is not None: # Check for None explicitly so we don't skip 0 or False
+                lines.append(f"{field['api']} ({field['type']}): {val}")
 
-            if val in [None, "", [], {}]:
-                continue
-            
-            # Formatting Value based on Type
-            display_val = val
-            
-            # Handle Lookups (usually dicts with 'name' and 'id')
-            if isinstance(val, dict) and "name" in val:
-                display_val = val["name"]
-            
-            # Handle Subforms (Lists of objects)
-            if dtype == "subform" and isinstance(val, list):
-                text_lines.append(f"\n--- Subform: {key} ---")
-                for idx, row in enumerate(val, 1):
-                    row_txt = []
-                    for k, v in row.items():
-                        if k not in ["id", "s_id"] and v:
-                            # Resolve lookup in subform
-                            if isinstance(v, dict) and "name" in v: 
-                                v = v["name"]
-                            row_txt.append(f"{k}: {v}")
-                    text_lines.append(f"  {idx}. " + ", ".join(row_txt))
-                continue
+        lines.append("\n--- ALL RELATED DATA ---")
+        list_keys = [k for k, v in record.items() if isinstance(v, list) and k != "Tag"]
+        found_details = False
 
-            text_lines.append(f"{key}: {display_val}")
+        for list_name in list_keys:
+            items = record[list_name]
+            if not items: continue
 
-        # 2. Handle Related Lists (Data fetched via separate API calls, stored in "Related_X")
-        # The Main Manager attaches these to the record dict
-        related_keys = [k for k in record.keys() if k.startswith("Related_")]
-        if related_keys:
-            text_lines.append("\n=== RELATED MODULE DATA ===")
-            for r_key in related_keys:
-                module_name = r_key.replace("Related_", "")
-                items = record[r_key]
-                if items:
-                    text_lines.append(f"\n[Related Module: {module_name}] ({len(items)} items)")
-                    for i, item in enumerate(items[:5], 1): # Limit to top 5 for brevity
-                        # Try to find a readable name
-                        name = item.get("Name") or item.get("Subject") or item.get("Account_Name") or "Record"
-                        
-                        # Formatting: Flatten the related item loosely
-                        details = [f"{k}: {v}" for k, v in item.items() 
-                                   if v and k not in ["id", "Owner", "Created_Time", "Modified_Time"]]
-                        # Take only first 3 distinct fields for summary
-                        summary = ", ".join(details[:3])
-                        text_lines.append(f"  {i}. {name} ({summary}...)")
+            clean_name = list_name.replace("Related_", "")
+            lines.append(f"\n# {clean_name} ({len(items)} items)")
+            found_details = True
+            config_key = next((k for k in SPECIFIC_LIST_CONFIG if k == clean_name), None)
 
-        return "\n".join(text_lines)
+            for i, item in enumerate(items, 1):
+                row_parts = []
+                if "id" in item: row_parts.append(f"ID: {item['id']}") # ALWAYS SHOW ID
 
-    def generate_response(self, query: str, account_data: dict) -> str:
-        """
-        Generates the final response using the specific Account Persona.
-        """
-        # 1. Convert Data to Text
+                if config_key:
+                    for f in SPECIFIC_LIST_CONFIG[config_key]:
+                        val = item.get(f)
+                        if val: row_parts.append(f"{f}: {val}")
+                else:
+                    # Auto-Detect
+                    priority_keywords = ["name", "subject", "title", "content", "type", "status", "amount", "value", "date"]
+                    def key_func(k):
+                        low = k.lower()
+                        for idx, kw in enumerate(priority_keywords):
+                            if kw in low: return idx
+                        return len(priority_keywords)
+                    sorted_keys = sorted(item.keys(), key=key_func)
+                    count = 0
+                    for k in sorted_keys:
+                        val = item.get(k)
+                        # [FIX] ALLOW IDs to be seen
+                        if val and isinstance(val, (str, int, float)):
+                            if k.lower() == "id": continue 
+                            row_parts.append(f"{k}: {val}")
+                            count += 1
+                        if count >= 6: break
+                
+                if row_parts: lines.append(f"  {i}. " + " | ".join(row_parts))
+                else: lines.append(f"  {i}. [Details present but hidden]")
+
+        if not found_details: lines.append("(No related module data found)")
+        return "\n".join(lines)
+
+    # [UPDATED] generate_response now accepts 'history'
+    def generate_response(self, query: str, account_data: dict, history: list = []) -> str:
         context_text = self.format_data_for_ai(account_data)
 
-        # 2. Build the Specialist Prompt
-        prompt = f"""
-        You are an expert Relationship Manager Assistant specializing in CLIENT ACCOUNTS.
-        
-        Your goal is to answer the user's question using ONLY the provided account data.
-        
-        ### SYSTEM KNOWLEDGE (The Schema of this Database)
-        The following fields exist in the database. Use this to understand the data types (e.g., Currency vs Text):
-        {self.schema_string}
+        # [NEW] Format history for the prompt
+        history_block = ""
+        if history:
+            history_block = "### CONVERSATION HISTORY (Use this to resolve 'it', 'that', or context)\n"
+            # Look back 5 messages max
+            for msg in history[-5:]: 
+                role = "User" if msg.get("role") == "user" else "AI"
+                content = msg.get("content", "")
+                history_block += f"{role}: {content}\n"
 
-        ### CURRENT ACCOUNT CONTEXT
+        prompt = f"""
+        You are an intelligent Relationship Manager AI Assistant.
+        
+        ### CLIENT DATA
         {context_text}
 
-        ### USER QUESTION
+        {history_block}
+
+        ### CURRENT QUESTION
         "{query}"
 
         ### INSTRUCTIONS
-        1. Answer directly and professionally.
-        2. If the user asks about financial data (Currency fields), format it nicely (e.g., $1,000,000).
-        3. If the user asks about a field that is NOT in the 'CURRENT ACCOUNT CONTEXT' but IS in the 'SYSTEM KNOWLEDGE', explain that the field exists but is currently empty/blank for this client.
-        4. If the user asks about related items (like Deals or Contacts) check the 'RELATED MODULE DATA' section.
+        1. Answer based *only* on the data above.
+        2. **Use History:** If the user says "Change it" or "Update that", refer to the 'CONVERSATION HISTORY' to understand what they are talking about.
+        3. If the user wants to CREATE or UPDATE, use the Action Protocol below.
+        4. **IMPORTANT:** When updating a specific item (like a Loan or Asset), you MUST include its "ID" in the `record_id` field.
+        
+        ### ACTION PROTOCOL
+        <<<ACTION>>>
+        {{
+            "action": "create" | "update",
+            "module": "API_NAME_FROM_ABOVE",
+            "record_id": "123456789", 
+            "data": {{ "Field_Name": "New Value" }}
+        }}
+        <<<END_ACTION>>>
         
         Answer:
         """
-
         response = self.model.generate_content(prompt)
         return response.text

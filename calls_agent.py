@@ -1,36 +1,17 @@
 import json
 import google.generativeai as genai
 
-# --- KNOWLEDGE BASE: CALLS SCHEMA ---
 CALLS_SCHEMA = [
-    # Core Call Info
+    {"api": "id", "type": "text"},
     {"api": "Subject", "type": "text"},
-    {"api": "Call_Type", "type": "picklist"}, # Inbound, Outbound, Missed
-    {"api": "Call_Purpose", "type": "picklist"}, # Demo, Negotiation, Support
-    {"api": "Call_Status", "type": "picklist"}, # Scheduled, Completed
-    {"api": "Call_Result", "type": "picklist"}, # Interested, Not Interested, Busy
-    
-    # Timing & Duration
+    {"api": "Call_Type", "type": "picklist"}, # Inbound/Outbound
     {"api": "Call_Start_Time", "type": "datetime"},
-    {"api": "Call_Duration", "type": "text"}, # e.g. "05:00"
-    {"api": "Call_Duration_in_seconds", "type": "integer"},
-    
-    # Participants
-    {"api": "Owner", "type": "ownerlookup"}, # Call Owner
-    {"api": "Who_Id", "type": "lookup (Contact)"},
-    {"api": "What_Id", "type": "lookup (Related To)"}, # Account/Deal
-    {"api": "Caller_ID", "type": "text"},
-    {"api": "Dialled_Number", "type": "text"},
-    
-    # Content & Outcomes
-    {"api": "Description", "type": "textarea"},
-    {"api": "Call_Agenda", "type": "text"},
-    {"api": "Voice_Recording__s", "type": "website"}, # URL
-    
-    # System
-    {"api": "CTI_Entry", "type": "boolean"}, # Was this auto-logged?
-    {"api": "Outgoing_Call_Status", "type": "picklist"},
-    {"api": "Scheduled_In_CRM", "type": "picklist"}
+    {"api": "Call_Duration", "type": "text"},
+    {"api": "Who_Id", "type": "lookup", "target": "Contacts"},
+    {"api": "What_Id", "type": "lookup", "target": "Accounts"},
+    {"api": "Owner", "type": "ownerlookup", "target": "Users"},
+    {"api": "Description", "type": "textarea"}, # Call Result
+    {"api": "Call_Result", "type": "text"}
 ]
 
 class CallsAgent:
@@ -39,64 +20,49 @@ class CallsAgent:
         self.schema_string = "\n".join([f"- {f['api']} ({f['type']})" for f in CALLS_SCHEMA])
 
     def format_data_for_ai(self, record: dict) -> str:
-        """
-        Parses Call JSON into a clean, readable text block.
-        """
-        if not record:
-            return "No Call Data Available."
-
-        lines = ["=== CALL LOG DETAILS ==="]
-
-        # 1. Process Fields
-        for field in CALLS_SCHEMA:
-            key = field['api']
-            val = record.get(key)
-
-            if val in [None, "", [], {}]:
-                continue
-            
-            # Formatting Lookups
-            if isinstance(val, dict) and "name" in val:
-                val = val["name"]
-            
-            # Formatting Durations
-            if key == "Call_Duration_in_seconds":
-                mins = int(val) // 60
-                secs = int(val) % 60
-                val = f"{mins}m {secs}s"
-
-            lines.append(f"{key}: {val}")
-
+        if not record: return "No Call Data."
+        if "items" in record:
+            lines = [f"=== FOUND {len(record['items'])} CALLS ==="]
+            for i, item in enumerate(record['items'], 1):
+                lines.append(f"\n--- Call #{i} ---")
+                if "id" in item: lines.append(f"ID: {item['id']}")
+                if "Subject" in item: lines.append(f"Subject: {item['Subject']}")
+                for k, v in item.items():
+                    if k not in ["id", "Subject"]:
+                        val = v["name"] if isinstance(v, dict) and "name" in v else v
+                        if not val: val = "[Empty]"
+                        lines.append(f"{k}: {val}")
+            return "\n".join(lines)
+        
+        lines = ["=== CALL DETAILS ==="]
+        for k, v in record.items():
+            if isinstance(v, dict) and "name" in v: v = v["name"]
+            lines.append(f"{k}: {v}")
         return "\n".join(lines)
 
-    def generate_response(self, user_query: str, call_data: dict) -> str:
-        """
-        Generates a response answering questions about the Call.
-        """
-        context_text = self.format_data_for_ai(call_data)
-
+    def generate_response(self, query, data, history=[]):
+        context = self.format_data_for_ai(data)
+        hist = "\n".join([f"{m.get('role')}: {m.get('content')}" for m in history[-3:]])
         prompt = f"""
-        You are an expert Sales Operations Analyst.
-        
-        Your goal is to analyze this PHONE CALL LOG based on the data below.
-        
-        ### DATA SCHEMA
-        {self.schema_string}
-
-        ### CALL CONTEXT
-        {context_text}
-
-        ### USER QUESTION
-        "{user_query}"
-
+        You are an expert Call Logger.
+        ### DATA
+        {context}
+        ### HISTORY
+        {hist}
+        ### QUERY
+        "{query}"
         ### INSTRUCTIONS
-        - **Outcome Analysis:** Check 'Call_Result' and 'Description'. Was it successful?
-        - **Duration Check:** If the call was very short (< 30s), it might be a 'No Answer' or 'Left Voicemail'.
-        - **Next Steps:** If the result was 'Interested', suggest following up.
-        - **Recording:** If a 'Voice_Recording__s' link exists, point the user to it.
+        - Answer based on data.
+        - Updates need 'record_id'.
         
-        Answer:
+        ### ACTION PROTOCOL
+        <<<ACTION>>>
+        {{
+            "action": "create" | "update",
+            "module": "Calls",
+            "record_id": "123",
+            "data": {{ "Subject": "REQUIRED", "Call_Type": "Outbound" }}
+        }}
+        <<<END_ACTION>>>
         """
-        
-        response = self.model.generate_content(prompt)
-        return response.text
+        return self.model.generate_content(prompt).text
